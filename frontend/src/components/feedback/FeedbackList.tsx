@@ -9,6 +9,7 @@ interface FeedbackListProps {
   onOpenDetails: (item: FeedbackItem) => void;
   onStartEncapsulation: (item: FeedbackItem) => void;
   canCreateFeedback: boolean;
+  canEncapsulate?: boolean;
 }
 
 export const FeedbackList: React.FC<FeedbackListProps> = ({
@@ -17,6 +18,7 @@ export const FeedbackList: React.FC<FeedbackListProps> = ({
   onOpenDetails,
   onStartEncapsulation,
   canCreateFeedback,
+  canEncapsulate = true,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStage, setSelectedStage] = useState<string>('ALL');
@@ -218,6 +220,7 @@ export const FeedbackList: React.FC<FeedbackListProps> = ({
               item={item}
               onOpenDetails={onOpenDetails}
               onStartEncapsulation={onStartEncapsulation}
+              canEncapsulate={canEncapsulate}
             />
           ))}
         </div>

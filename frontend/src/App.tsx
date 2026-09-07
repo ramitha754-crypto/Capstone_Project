@@ -264,6 +264,7 @@ export function App() {
             onOpenDetails={(item) => setDetailsItem(item)}
             onStartEncapsulation={(item) => setEncapsulationItem(item)}
             canCreateFeedback={canOpenSubmitFeedback(currentUser)}
+            canEncapsulate={canEncapsulateFeedback(currentUser)}
           />
         )}
 
@@ -306,6 +307,7 @@ export function App() {
         isOpen={isSubmitModalOpen}
         onClose={() => setIsSubmitModalOpen(false)}
         onSubmit={handleAddFeedback}
+        currentUser={currentUser}
         currentUserRole={currentUser.role}
       />
 

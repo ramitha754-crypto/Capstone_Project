@@ -15,12 +15,14 @@ interface FeedbackCardProps {
   item: FeedbackItem;
   onOpenDetails: (item: FeedbackItem) => void;
   onStartEncapsulation: (item: FeedbackItem) => void;
+  canEncapsulate?: boolean;
 }
 
 export const FeedbackCard: React.FC<FeedbackCardProps> = ({
   item,
   onOpenDetails,
   onStartEncapsulation,
+  canEncapsulate = true,
 }) => {
   const renderPriorityBadge = (priority: PriorityLevel) => {
     switch (priority) {
@@ -206,14 +208,25 @@ export const FeedbackCard: React.FC<FeedbackCardProps> = ({
           </button>
 
           {!item.encapsulatedSpec ? (
-            <button
-              className="btn btn-primary"
-              onClick={() => onStartEncapsulation(item)}
-              style={{ flex: 1.2, height: '34px', fontSize: '0.78rem' }}
-            >
-              <Cpu size={13} />
-              <span>Encapsulate Spec</span>
-            </button>
+            canEncapsulate ? (
+              <button
+                className="btn btn-primary"
+                onClick={() => onStartEncapsulation(item)}
+                style={{ flex: 1.2, height: '34px', fontSize: '0.78rem' }}
+              >
+                <Cpu size={13} />
+                <span>Encapsulate Spec</span>
+              </button>
+            ) : (
+              <button
+                className="btn btn-secondary"
+                onClick={() => onOpenDetails(item)}
+                style={{ flex: 1.2, height: '34px', fontSize: '0.78rem' }}
+              >
+                <span>View Responses</span>
+                <ChevronRight size={13} />
+              </button>
+            )
           ) : (
             <button
               className="btn btn-secondary"

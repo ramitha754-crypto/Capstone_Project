@@ -7,13 +7,15 @@ interface SubmitFeedbackModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (newItem: FeedbackItem) => void;
-  currentUserRole: string;
+  currentUser?: UserPersona | null;
+  currentUserRole?: string;
 }
 
 export const SubmitFeedbackModal: React.FC<SubmitFeedbackModalProps> = ({
   isOpen,
   onClose,
   onSubmit,
+  currentUser,
 }) => {
   const [selectedAccountKey, setSelectedAccountKey] = useState<string>('acme');
   const [title, setTitle] = useState('');
@@ -35,6 +37,10 @@ export const SubmitFeedbackModal: React.FC<SubmitFeedbackModalProps> = ({
     const slaHours = account.slaTierHours || 12;
     const slaDeadlineDate = new Date(now.getTime() + slaHours * 3600 * 1000);
 
+    const submitterName = currentUser?.name || 'Customer User';
+    const submitterRole = currentUser?.role || 'CUSTOMER_REP';
+    const submitterTitle = currentUser?.title ? ` (${currentUser.title})` : '';
+
     const newItem: FeedbackItem = {
       id: `fb-${Date.now()}`,
       code: randomCode,
@@ -45,7 +51,7 @@ export const SubmitFeedbackModal: React.FC<SubmitFeedbackModalProps> = ({
       stage: 'inbox',
       account,
       sentiment,
-      submittedBy: 'Ingested via Enterprise Portal',
+      submittedBy: `${submitterName}${submitterTitle}`,
       submittedAt: now.toISOString(),
       slaDeadline: slaDeadlineDate.toISOString(),
       isSlaBreached: false,
@@ -54,10 +60,10 @@ export const SubmitFeedbackModal: React.FC<SubmitFeedbackModalProps> = ({
         {
           id: `aud-${Date.now()}`,
           timestamp: now.toISOString(),
-          actor: 'System Support Ingestion',
-          actorRole: 'SUPPORT_SPECIALIST',
-          action: 'INGESTED',
-          details: `Feedback ${randomCode} submitted for ${account.name}. SLA window set to ${slaHours}h.`,
+          actor: submitterName,
+          actorRole: submitterRole,
+          action: 'SUBMITTED',
+          details: `Feedback ${randomCode} submitted for ${account.name} by ${submitterName}. SLA window set to ${slaHours}h.`,
         },
       ],
       comments: [],

@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { setupDatabase, getDbPool, insertAuditLog } from './db.js';
+import { sendRegistrationEmail } from './emailService.js';
 
 dotenv.config();
 
@@ -107,6 +108,108 @@ function requirePermission(permission) {
     return res.status(403).json({ error: 'Forbidden' });
   };
 }
+
+app.post('/api/auth/register', async (req, res) => {
+  const { username, password, name, email, title, role: reqRole } = req.body;
+
+  // Determine role, default to CUSTOMER_REP if not provided or not ADMIN
+  const role = reqRole && reqRole.toUpperCase() === 'ADMIN' ? 'ADMIN' : 'CUSTOMER_REP';
+
+  if (!username || !password || !name) {
+    return res.status(400).json({ error: 'Full name, username, and password are required' });
+  }
+
+  const cleanUsername = String(username).trim().toLowerCase();
+  if (cleanUsername.length < 3) {
+    return res.status(400).json({ error: 'Username must be at least 3 characters long' });
+  }
+
+  if (!isPasswordStrong(password)) {
+    return res.status(400).json({ error: passwordPolicyError });
+  }
+
+  try {
+    const pool = await getDbPool();
+
+    // Check username uniqueness
+    const [existingUsers] = await pool.query('SELECT id FROM users WHERE LOWER(username) = LOWER(?)', [cleanUsername]);
+    if (existingUsers.length > 0) {
+      return res.status(409).json({ error: `Username '${cleanUsername}' is already taken` });
+    }
+
+    // Check email uniqueness if email provided
+    const cleanEmail = email ? String(email).trim().toLowerCase() : null;
+    if (cleanEmail) {
+      const [existingEmails] = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [cleanEmail]);
+      if (existingEmails.length > 0) {
+        return res.status(409).json({ error: `Email '${cleanEmail}' is already registered` });
+      }
+    }
+
+    const id = `usr-${Date.now()}`;
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+
+    // Compute initials avatar
+    const nameParts = String(name).trim().split(/\s+/);
+    let avatar = 'CU';
+    if (nameParts.length >= 2) {
+      avatar = (nameParts[0][0] + nameParts[1][0]).toUpperCase();
+    } else if (nameParts.length === 1 && nameParts[0].length >= 1) {
+      avatar = nameParts[0].substring(0, 2).toUpperCase();
+    }
+
+    // Role determined from request (default CUSTOMER_REP)
+    const userTitle = title && String(title).trim() ? String(title).trim() : 'Customer Representative';
+    const permissions = role === 'ADMIN' ? ['MANAGE_USERS', 'VIEW_AUDIT_LOGS', 'CREATE_FEEDBACK', 'SUBMIT_FEEDBACK', 'VIEW_OWN_FEEDBACK'] : ['CREATE_FEEDBACK', 'SUBMIT_FEEDBACK', 'VIEW_OWN_FEEDBACK'];
+    const permsJson = JSON.stringify(permissions);
+
+    await pool.query(
+      'INSERT INTO users (id, username, password_hash, name, role, title, avatar, email, permissions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, cleanUsername, passwordHash, name.trim(), role, userTitle, avatar, cleanEmail, permsJson]
+    );
+
+    const sessionUser = {
+      id,
+      username: cleanUsername,
+      name: name.trim(),
+      role,
+      title: userTitle,
+      avatar,
+      email: cleanEmail,
+      permissions,
+    };
+
+    // Issue JWTs
+    const accessToken = signAccessToken(sessionUser);
+    const refreshToken = signRefreshToken(sessionUser);
+
+    const secureFlag = process.env.NODE_ENV === 'production';
+    res.cookie('access_token', accessToken, { httpOnly: true, secure: secureFlag, sameSite: 'lax', maxAge: 15 * 60 * 1000 });
+    res.cookie('refresh_token', refreshToken, { httpOnly: true, secure: secureFlag, sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000 });
+
+    // Audit log for registration
+    await insertAuditLog(pool, sessionUser.id, sessionUser.name, sessionUser.role, 'REGISTER', `User '${sessionUser.username}' registered successfully as '${sessionUser.role}'.`);
+
+    // Send notification emails
+    // Email to the newly registered user (if email provided)
+    if (cleanEmail) {
+      await sendRegistrationEmail({ to: cleanEmail, name: sessionUser.name, username: sessionUser.username, role: sessionUser.role, title: sessionUser.title });
+    }
+    // Email to admin notifying of new admin registration (if role is ADMIN)
+    if (sessionUser.role === 'ADMIN') {
+      const adminNotify = process.env.ADMIN_NOTIFICATION_EMAIL;
+      if (adminNotify) {
+        await sendRegistrationEmail({ to: adminNotify, name: sessionUser.name, username: sessionUser.username, role: sessionUser.role, title: sessionUser.title });
+      }
+    }
+
+    res.status(201).json(sessionUser);
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ error: 'Internal server error during registration' });
+  }
+});
 
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
@@ -269,8 +372,9 @@ app.get('/api/auth/health', async (req, res) => {
 
 app.get('/api/users', authMiddleware, requirePermission('MANAGE_USERS'), async (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     const pool = await getDbPool();
-    const [rows] = await pool.query('SELECT id, username, name, role, title, avatar, email, permissions FROM users');
+    const [rows] = await pool.query('SELECT id, username, name, role, title, avatar, email, permissions FROM users ORDER BY id DESC');
     
     // Parse permissions for each user
     const users = rows.map(user => {
