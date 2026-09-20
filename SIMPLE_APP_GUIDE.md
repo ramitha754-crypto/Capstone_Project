@@ -135,3 +135,57 @@ Each feedback card can show:
 
 PulseBoard helps different company teams collect customer feedback, understand it,
 turn it into development work, and track it until it is resolved.
+
+## 11. How the application was deployed
+
+The application was deployed to the cloud using these services:
+
+| Service | How it was used |
+|---|---|
+| Bluehost | Provided the VPS/server |
+| Ubuntu | Operating system installed on the server |
+| Docker | Runs the frontend, backend, database, and Traefik containers |
+| GoDaddy | Stores the domain name and DNS settings |
+| SendGrid | Sends registration and notification emails |
+| Git | Downloads the application source code onto the server |
+
+### Simple deployment steps
+
+1. A VPS server was created in Bluehost.
+2. Ubuntu was installed as the server operating system.
+3. Docker and Docker Compose were installed on Ubuntu.
+4. The project repository was cloned using Git.
+5. The Docker Compose configuration was started.
+6. The application frontend, backend, MySQL database, and Traefik services started in Docker.
+7. A domain was purchased and managed in GoDaddy.
+8. A DNS record was added in GoDaddy pointing the domain to the Bluehost server IP address.
+9. Traefik provided HTTPS using a Let's Encrypt certificate.
+10. SendGrid was connected to send registration emails using a verified sender address.
+
+In simple terms:
+
+```text
+GoDaddy domain
+       ↓
+Bluehost server IP
+       ↓
+Ubuntu + Docker
+       ↓
+Frontend + Backend + MySQL + Traefik
+       ↓
+PulseBoard application
+```
+
+### Email service
+
+SendGrid is used by the backend to send emails when a user registers. The sender email
+must be verified in SendGrid. The project currently uses SendGrid's free subscription
+for development and demonstration purposes.
+
+### Important security notes
+
+- Keep passwords, API keys, and `.env` files private.
+- Do not expose the MySQL port publicly.
+- Allow only the required web ports, normally 80 and 443.
+- Use HTTPS when opening the application.
+- Free service plans may have usage limits.
