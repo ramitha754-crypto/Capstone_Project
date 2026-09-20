@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Plus } from 'lucide-react';
-import type { FeedbackItem, FeedbackCategory, PriorityLevel, SentimentScore, CustomerAccount } from '../../types/feedback';
+import type { FeedbackItem, FeedbackCategory, PriorityLevel, SentimentScore, CustomerAccount, UserPersona } from '../../types/feedback';
 import { mockAccounts } from '../../data/mockData';
 
 interface SubmitFeedbackModalProps {

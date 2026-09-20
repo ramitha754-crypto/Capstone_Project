@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Search, RefreshCw, Shield, Mail, UserPlus, X, Check } from 'lucide-react';
+import { Users, Search, RefreshCw, Shield, Mail, UserPlus, X } from 'lucide-react';
 
 interface User {
   id: string;

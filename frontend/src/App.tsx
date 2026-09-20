@@ -136,8 +136,6 @@ export function App() {
     setCurrentUser(null);
   };
 
-  const authHeaders: Record<string, string> = {};
-
   const updateFeedbackAPI = async (updatedItem: FeedbackItem) => {
     try {
       const response = await fetch(`/api/feedback/${updatedItem.id}`, {
@@ -283,10 +281,8 @@ export function App() {
         currentUser={currentUser}
         theme={theme}
         onToggleTheme={handleToggleTheme}
-        onOpenSubmitModal={() => setIsSubmitModalOpen(true)}
         onLogout={handleLogout}
         allowedTabs={allowedTabs}
-        canCreateFeedback={canOpenSubmitFeedback(currentUser)}
       />
 
       {/* Main View Router */}

@@ -5,7 +5,6 @@ import {
   Cpu, 
   GitPullRequest, 
   BarChart3, 
-  Plus, 
   Sun,
   Moon,
   LogOut,
@@ -20,10 +19,8 @@ interface SidebarProps {
   currentUser: UserPersona;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
-  onOpenSubmitModal: () => void;
   onLogout: () => void;
   allowedTabs: string[];
-  canCreateFeedback: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -32,10 +29,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   theme,
   onToggleTheme,
-  onOpenSubmitModal,
   onLogout,
   allowedTabs,
-  canCreateFeedback,
 }) => {
   return (
     <aside className="app-sidebar" style={{
