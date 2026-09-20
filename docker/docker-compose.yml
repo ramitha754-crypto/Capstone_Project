@@ -4,6 +4,8 @@ services:
     restart: unless-stopped
     command:
       - --api.dashboard=false
+      - --log.level=INFO
+      - --accesslog=true
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
