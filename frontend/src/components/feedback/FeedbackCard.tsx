@@ -128,6 +128,20 @@ export const FeedbackCard: React.FC<FeedbackCardProps> = ({
           </div>
         </div>
 
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          marginBottom: '10px',
+          fontSize: '0.72rem',
+          color: 'var(--text-muted)'
+        }}>
+          <span>Logged by</span>
+          <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+            {item.submittedBy || 'Unknown user'}
+          </span>
+        </div>
+
         {/* Feedback Title & Raw Text */}
         <h3 style={{
           fontSize: '0.95rem',

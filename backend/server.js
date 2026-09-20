@@ -13,6 +13,31 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+function parseUserSettings(value) {
+  if (!value) return {};
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    console.error('Error parsing user settings:', error);
+    return {};
+  }
+}
+
+function toSessionUser(user, permissions) {
+  return {
+    id: user.id,
+    username: user.username,
+    name: user.name,
+    role: user.role,
+    title: user.title,
+    avatar: user.avatar,
+    email: user.email,
+    permissions,
+    settings: parseUserSettings(user.settings),
+  };
+}
+
 // Enable CORS for frontend with credentials
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
 app.use(cors({ origin: FRONTEND_ORIGIN, credentials: true }));
@@ -165,8 +190,8 @@ app.post('/api/auth/register', async (req, res) => {
     const permsJson = JSON.stringify(permissions);
 
     await pool.query(
-      'INSERT INTO users (id, username, password_hash, name, role, title, avatar, email, permissions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, cleanUsername, passwordHash, name.trim(), role, userTitle, avatar, cleanEmail, permsJson]
+      'INSERT INTO users (id, username, password_hash, name, role, title, avatar, email, permissions, settings) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, cleanUsername, passwordHash, name.trim(), role, userTitle, avatar, cleanEmail, permsJson, JSON.stringify({})]
     );
 
     const sessionUser = {
@@ -178,6 +203,7 @@ app.post('/api/auth/register', async (req, res) => {
       avatar,
       email: cleanEmail,
       permissions,
+      settings: {},
     };
 
     // Issue JWTs
@@ -245,16 +271,7 @@ app.post('/api/auth/login', async (req, res) => {
       console.error('Error parsing permissions:', e);
     }
 
-    const sessionUser = {
-      id: user.id,
-      username: user.username,
-      name: user.name,
-      role: user.role,
-      title: user.title,
-      avatar: user.avatar,
-      email: user.email,
-      permissions,
-    };
+    const sessionUser = toSessionUser(user, permissions);
 
     // issue JWTs
     const accessToken = signAccessToken(sessionUser);
@@ -305,16 +322,7 @@ app.post('/api/auth/refresh', async (req, res) => {
       else if (Array.isArray(user.permissions)) permissions = user.permissions;
     } catch (e) { }
 
-    const sessionUser = {
-      id: user.id,
-      username: user.username,
-      name: user.name,
-      role: user.role,
-      title: user.title,
-      avatar: user.avatar,
-      email: user.email,
-      permissions,
-    };
+    const sessionUser = toSessionUser(user, permissions);
 
     const newAccess = signAccessToken(sessionUser);
     res.cookie('access_token', newAccess, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 15 * 60 * 1000 });
@@ -322,6 +330,27 @@ app.post('/api/auth/refresh', async (req, res) => {
     res.json(sessionUser);
   } catch (error) {
     console.error('Refresh error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.patch('/api/auth/preferences', authMiddleware, async (req, res) => {
+  const { theme } = req.body;
+  if (theme !== 'dark' && theme !== 'light') {
+    return res.status(400).json({ error: 'Theme must be dark or light' });
+  }
+
+  try {
+    const pool = await getDbPool();
+    await pool.query(
+      `UPDATE users
+       SET settings = JSON_SET(COALESCE(settings, JSON_OBJECT()), '$.theme', ?)
+       WHERE id = ?`,
+      [theme, req.user.id]
+    );
+    res.json({ settings: { theme } });
+  } catch (error) {
+    console.error('Update user preferences error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -477,6 +506,10 @@ app.get('/api/accounts', authMiddleware, async (req, res) => {
 app.get('/api/feedback', authMiddleware, async (req, res) => {
   try {
     const pool = await getDbPool();
+    const ownershipFilter = req.user.role === 'CUSTOMER_REP'
+      ? 'WHERE f.submittedById = ?'
+      : '';
+    const queryParams = req.user.role === 'CUSTOMER_REP' ? [req.user.id] : [];
     const [rows] = await pool.query(`
       SELECT 
         f.*,
@@ -487,8 +520,9 @@ app.get('/api/feedback', authMiddleware, async (req, res) => {
         a.slaTierHours as account_sla
       FROM feedback f
       LEFT JOIN accounts a ON f.accountId = a.id
+      ${ownershipFilter}
       ORDER BY f.submittedAt DESC
-    `);
+    `, queryParams);
     
     const feedbackItems = rows.map(item => {
       let tags = [];
@@ -555,11 +589,11 @@ app.post('/api/feedback', authMiddleware, requirePermission('CREATE_FEEDBACK'), 
     const pool = await getDbPool();
     await pool.query(`
       INSERT INTO feedback 
-      (id, code, title, rawContent, category, priority, stage, accountId, sentiment, submittedBy, submittedAt, slaDeadline, isSlaBreached, tags, encapsulatedSpec, auditTrail, comments)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, code, title, rawContent, category, priority, stage, accountId, sentiment, submittedBy, submittedById, submittedAt, slaDeadline, isSlaBreached, tags, encapsulatedSpec, auditTrail, comments)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       fb.id, fb.code, fb.title, fb.rawContent, fb.category, fb.priority, fb.stage, 
-      fb.account.id, fb.sentiment, fb.submittedBy, new Date(fb.submittedAt), new Date(fb.slaDeadline), 
+      fb.account.id, fb.sentiment, req.user.name, req.user.id, new Date(fb.submittedAt), new Date(fb.slaDeadline),
       fb.isSlaBreached, tags, encapsulatedSpec, auditTrail, comments
     ]);
 
@@ -578,12 +612,18 @@ app.put('/api/feedback/:id', authMiddleware, async (req, res) => {
     const { id } = req.params;
     const fb = req.body;
     const pool = await getDbPool();
-    const [existingRows] = await pool.query('SELECT stage, comments, encapsulatedSpec FROM feedback WHERE id = ?', [id]);
+    const [existingRows] = await pool.query(
+      'SELECT stage, comments, encapsulatedSpec, submittedById FROM feedback WHERE id = ?',
+      [id]
+    );
     if (existingRows.length === 0) {
       return res.status(404).json({ error: 'Feedback item not found' });
     }
 
     const existingItem = existingRows[0];
+    if (req.user.role === 'CUSTOMER_REP' && existingItem.submittedById !== req.user.id) {
+      return res.status(403).json({ error: 'You can only update your own feedback' });
+    }
     let existingComments = [];
     try {
       existingComments = existingItem.comments ? (typeof existingItem.comments === 'string' ? JSON.parse(existingItem.comments) : existingItem.comments) : [];

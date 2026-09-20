@@ -223,6 +223,150 @@ This release includes several security and access-control improvements. Use this
 
 ---
 
+## ✅ Current Application Behavior
+
+### Authentication and user identity
+
+The application uses the backend login and registration APIs. A successful login creates
+httpOnly access and refresh cookies; the frontend does not store JWTs in localStorage.
+Refreshing the browser restores the session through `POST /api/auth/refresh`.
+
+Use real database users for the demo rather than relying on the old mock-persona wording
+above. A typical demo setup is:
+
+| Demo user | Role | Expected result |
+| :--- | :--- | :--- |
+| `prat1` | `CUSTOMER_REP` | Can submit feedback and see only feedback submitted by `prat1` |
+| Admin account | `ENTERPRISE_ADMIN` | Can manage users, inspect all feedback, view audit logs, and use admin workflow permissions |
+
+The password policy for registration and user creation/update is at least 16 characters
+with uppercase, lowercase, and a special character. Never place demo passwords in this
+guide or commit them to the repository.
+
+### Customer Representative feedback isolation
+
+Feedback ownership is enforced on the backend, not only in the UI:
+
+1. When a user submits feedback, the backend records the authenticated user's ID in
+   `feedback.submittedById`.
+2. `CUSTOMER_REP` requests to `GET /api/feedback` are filtered by that ID.
+3. A customer representative cannot update another user's feedback through
+   `PUT /api/feedback/:id`.
+4. The Feedback Ingestion card displays the submitter in the **Logged by** field.
+
+The `submittedById` column is added automatically for existing MySQL databases when the
+backend starts. Existing seed records may have no owner ID and therefore are intended for
+administrative views; new customer submissions are owner-linked.
+
+### Theme behavior
+
+The initial theme follows the browser/operating-system `prefers-color-scheme` setting.
+After a user explicitly switches Light/Dark, the preference is saved in the user's
+`settings` JSON column:
+
+```text
+users.settings = { "theme": "light" | "dark" }
+```
+
+The preference is updated through the authenticated `PATCH /api/auth/preferences`
+endpoint and is restored on the next login or session refresh. If saving fails, the
+frontend reverts to the previous theme and logs the error.
+
+### Fixed navigation layout
+
+The application shell uses a fixed viewport-height layout. The sidebar, current-user
+identity, theme control, and Logout action stay in place while only the main feedback
+content pane scrolls. This prevents the sidebar controls from moving out of view when
+many feedback cards are loaded.
+
+### Feedback email notifications
+
+Registration email delivery uses SendGrid from `backend/emailService.js`.
+
+Required configuration:
+
+```env
+SENDGRID_API_KEY=<restricted SendGrid API key>
+SENDGRID_FROM_EMAIL=<verified Sender Identity>
+```
+
+The `SENDGRID_FROM_EMAIL` address must be verified in SendGrid or domain-authenticated.
+SendGrid returning HTTP `202 Accepted` means the request was accepted for delivery; the
+recipient should also check spam/junk folders. Revoke any API key that has been exposed
+and never commit API keys to source control.
+
+---
+
+## 🐳 Cloud VM Docker Deployment
+
+The deployment files are in the [docker](./docker) directory. The stack contains:
+
+- `frontend`: Vite production build served by Nginx on port 80.
+- `backend`: Node.js/Express API on the internal Docker network at port 5000.
+- `db`: MySQL 8.4 with persistent volume storage.
+- Nginx proxying `/api/*` requests to the backend service.
+- `traefik`: public HTTP/HTTPS entrypoint with automatic Let's Encrypt certificates.
+
+The application currently uses MySQL (`mysql2`), not PostgreSQL. The MySQL database/schema
+name defaults to `feedback_encapsulation_db`.
+
+### First deployment
+
+On the VM, from the repository root:
+
+```bash
+cd docker
+cp .env.example .env
+```
+
+Edit `docker/.env` and set unique production values for:
+
+```env
+DB_PASSWORD=<strong application database password>
+DB_ROOT_PASSWORD=<different strong root password>
+JWT_SECRET=<long random secret>
+APP_DOMAIN=feedback.yourdomain.com
+ACME_EMAIL=admin@yourdomain.com
+FRONTEND_ORIGIN=https://feedback.yourdomain.com
+SENDGRID_API_KEY=<restricted key, optional>
+SENDGRID_FROM_EMAIL=<verified sender, optional>
+ADMIN_NOTIFICATION_EMAIL=<admin email, optional>
+```
+
+Start the stack:
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f backend
+```
+
+Before starting the stack, create a DNS `A` record that points
+`feedback.yourdomain.com` to the VM public IP. Allow inbound TCP ports 80 and 443 in
+the cloud firewall. Open `https://feedback.yourdomain.com` after the certificate is
+issued. Traefik redirects HTTP traffic to HTTPS and renews the certificate automatically.
+
+The database data is stored in the `mysql_data` Docker volume and survives container
+recreation. Do not publish MySQL port 3306 publicly unless there is a specific operational
+requirement.
+
+Traefik stores the ACME account and certificate data in the persistent
+`letsencrypt_data` volume. Use secure secret storage on the VM or cloud secret manager
+instead of committing `docker/.env`.
+
+### Useful Docker operations
+
+```bash
+docker compose logs -f
+docker compose restart backend
+docker compose exec db mysql -u"$DB_USER" -p"$DB_PASSWORD" "$DB_NAME"
+docker compose down
+```
+
+Do not run `docker compose down -v` unless database data should be permanently deleted.
+
+---
+
 ## ✅ Notes & Recommendations
 - Replace in-memory refresh token store with Redis or DB for production to support revocation across instances.
 - Never commit passwords to source control. Use a secret manager or secure CI pipeline to set DB seeds if needed.

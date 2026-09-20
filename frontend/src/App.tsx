@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { FeedbackItem, UserPersona, WorkflowStage, EncapsulatedSpec } from './types/feedback';
+import type { FeedbackItem, UserPersona, WorkflowStage, EncapsulatedSpec, Theme } from './types/feedback';
 import { Login } from './components/auth/Login';
 import { Sidebar } from './components/layout/Sidebar';
 import { FeedbackList } from './components/feedback/FeedbackList';
@@ -13,8 +13,14 @@ import { UserManagement } from './components/users/UserManagement';
 import { AuditLogDashboard } from './components/audit/AuditLogDashboard';
 import { availableDashboardTabs, canOpenSubmitFeedback, canEncapsulateFeedback, canTransitionWorkflow, canCommentFeedback } from './utils/permissions';
 
+const getSystemTheme = (): Theme => (
+  window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+);
+
 export function App() {
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [theme, setTheme] = useState<Theme>(() => (
+    getSystemTheme()
+  ));
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<UserPersona | null>(null);
   const [currentTab, setCurrentTab] = useState<string>('feedback');
@@ -49,6 +55,7 @@ export function App() {
         if (res.ok) {
           const user = await res.json();
           setCurrentUser(user);
+          setTheme(user.settings?.theme || getSystemTheme());
           setIsAuthenticated(true);
         } else {
           setIsAuthenticated(false);
@@ -83,12 +90,39 @@ export function App() {
   }, [isAuthenticated]);
 
   const handleToggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    const previousTheme = theme;
+    setTheme(nextTheme);
+    setCurrentUser((previousUser) => previousUser ? {
+      ...previousUser,
+      settings: { ...previousUser.settings, theme: nextTheme },
+    } : previousUser);
+
+    if (currentUser) {
+      fetch('/api/auth/preferences', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: nextTheme }),
+      }).then((response) => {
+        if (!response.ok) {
+          throw new Error(`Theme preference request failed with status ${response.status}`);
+        }
+      }).catch((error) => {
+        console.error('Failed to save theme preference:', error);
+        setTheme(previousTheme);
+        setCurrentUser((previousUser) => previousUser ? {
+          ...previousUser,
+          settings: { ...previousUser.settings, theme: previousTheme },
+        } : previousUser);
+      });
+    }
   };
 
   // Auth Handlers
   const handleLogin = (user: UserPersona) => {
     setCurrentUser(user);
+    setTheme(user.settings?.theme || getSystemTheme());
     setIsAuthenticated(true);
   };
 
@@ -241,7 +275,7 @@ export function App() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'row' }}>
+    <div className="app-shell">
       {/* Sidebar Navigation */}
       <Sidebar
         currentTab={currentTab}
@@ -256,7 +290,7 @@ export function App() {
       />
 
       {/* Main View Router */}
-      <main style={{ flex: 1, overflowY: 'auto' }}>
+      <main className="app-main">
         {currentTab === 'feedback' && (
           <FeedbackList
             items={items}

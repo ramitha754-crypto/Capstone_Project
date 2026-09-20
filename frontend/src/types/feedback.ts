@@ -76,6 +76,7 @@ export interface FeedbackItem {
 }
 
 export type Role = 'SUPPORT_SPECIALIST' | 'PRODUCT_MANAGER' | 'ENTERPRISE_ADMIN' | 'CUSTOMER_REP' | 'ENGINEERING_LEAD';
+export type Theme = 'dark' | 'light';
 
 export interface SystemAuditLog {
   id: string;
@@ -95,5 +96,8 @@ export interface UserPersona {
   avatar: string;
   email: string;
   permissions: string[];
+  settings?: {
+    theme?: Theme;
+  };
   token?: string;
 }

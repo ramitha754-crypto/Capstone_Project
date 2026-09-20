@@ -38,16 +38,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   canCreateFeedback,
 }) => {
   return (
-    <aside style={{
-      width: '260px',
-      minHeight: '100vh',
+    <aside className="app-sidebar" style={{
       backgroundColor: 'var(--bg-card)',
       borderRight: '1px solid var(--border-medium)',
       display: 'flex',
       flexDirection: 'column',
       padding: '20px 0',
-      position: 'sticky',
-      top: 0,
       zIndex: 40,
       transition: 'background-color 0.25s ease, border-color 0.25s ease'
     }}>

@@ -1,0 +1,7 @@
+.git
+.gitignore
+docker/.env
+frontend/node_modules
+frontend/dist
+backend/node_modules
+backend/.env

@@ -175,9 +175,17 @@ export async function setupDatabase() {
         title VARCHAR(100),
         avatar VARCHAR(50),
         email VARCHAR(100),
-        permissions JSON
+        permissions JSON,
+        settings JSON
       )
     `);
+    try {
+      await currentPool.query('ALTER TABLE users ADD COLUMN settings JSON');
+    } catch (error) {
+      if (error.code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
 
     // 2. Create accounts table
     await currentPool.query(`
@@ -204,6 +212,7 @@ export async function setupDatabase() {
         accountId VARCHAR(50),
         sentiment VARCHAR(50),
         submittedBy VARCHAR(255),
+        submittedById VARCHAR(50),
         submittedAt DATETIME,
         slaDeadline DATETIME,
         isSlaBreached BOOLEAN,
@@ -214,6 +223,13 @@ export async function setupDatabase() {
         FOREIGN KEY (accountId) REFERENCES accounts(id)
       )
     `);
+    try {
+      await currentPool.query('ALTER TABLE feedback ADD COLUMN submittedById VARCHAR(50)');
+    } catch (error) {
+      if (error.code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
 
     // 4. Create system_audit_logs table
     await currentPool.query(`
