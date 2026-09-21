@@ -216,7 +216,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme, onToggleTheme }) =
       setLoginPassword('');
       setLoginOtp('');
       setShowActivationInput(true);
-      setSuccessMessage(data.message || 'Account registered. Enter the 6-digit OTP sent to your email to activate it.');
+      setSuccessMessage(data.message || 'Account registered. Enter the 6-digit OTP sent to your email to activate it. It expires in 60 seconds.');
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please check your information and try again.');
     } finally {

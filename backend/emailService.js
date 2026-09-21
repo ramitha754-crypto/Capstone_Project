@@ -168,7 +168,7 @@ export async function sendRegistrationEmail({ to, name, username, role = 'CUSTOM
           </div>
 
           <p style="line-height: 1.6; color: #94a3b8; font-size: 14px;">
-            ${otp ? `Use the 6-digit OTP above to activate your account before your first login. After activation, subsequent logins will use only your password.` : 'You can now submit customer feedback, track encapsulation pipelines, and monitor feedback processing in real-time.'}
+            ${otp ? `Use the 6-digit OTP above to activate your account within 60 seconds. After activation, subsequent logins will use only your password.` : 'You can now submit customer feedback, track encapsulation pipelines, and monitor feedback processing in real-time.'}
           </p>
 
           <div class="btn-wrapper">
@@ -188,7 +188,7 @@ export async function sendRegistrationEmail({ to, name, username, role = 'CUSTOM
     to,
     from: fromEmail,
     subject,
-    text: `Hello ${name},\n\nWelcome to the Customer Feedback Encapsulation System! Your account (${username}) with role ${role} has been registered successfully.\n\n${otp ? `Your 6-digit activation code is ${otp}. Use it to activate your account before logging in. After activation, future logins use your password only.` : `Log in at: ${loginUrl}`}`,
+    text: `Hello ${name},\n\nWelcome to the Customer Feedback Encapsulation System! Your account (${username}) with role ${role} has been registered successfully.\n\n${otp ? `Your 6-digit activation code is ${otp}. This code expires in 60 seconds. Use it to activate your account before logging in. After activation, future logins use your password only.` : `Log in at: ${loginUrl}`}`,
     html,
   };
 

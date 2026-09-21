@@ -62,6 +62,8 @@ function isPasswordStrong(password) {
   return passwordPolicyRegex.test(password);
 }
 
+const OTP_EXPIRY_MS = 60 * 1000;
+
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
@@ -181,7 +183,7 @@ app.post('/api/auth/register', async (req, res) => {
     const id = `usr-${Date.now()}`;
     const requiresOtpActivation = role === 'CUSTOMER_REP';
     const otp = requiresOtpActivation ? generateOtp() : null;
-    const otpExpiry = requiresOtpActivation ? new Date(Date.now() + 10 * 60 * 1000) : null;
+    const otpExpiry = requiresOtpActivation ? new Date(Date.now() + OTP_EXPIRY_MS) : null;
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
@@ -232,7 +234,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Account created. Check your email for the 6-digit OTP to activate your account.',
+      message: 'Account created. Check your email for the 6-digit OTP. It expires in 60 seconds.',
       requiresOtp: true,
       user: {
         id,
