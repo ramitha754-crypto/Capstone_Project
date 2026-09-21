@@ -62,6 +62,10 @@ function isPasswordStrong(password) {
   return passwordPolicyRegex.test(password);
 }
 
+function generateOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
 function signAccessToken(user) {
   const payload = {
     sub: user.id,
@@ -164,6 +168,9 @@ app.post('/api/auth/register', async (req, res) => {
 
     // Check email uniqueness if email provided
     const cleanEmail = email ? String(email).trim().toLowerCase() : null;
+    if (role === 'CUSTOMER_REP' && !cleanEmail) {
+      return res.status(400).json({ error: 'An email address is required to receive the activation OTP.' });
+    }
     if (cleanEmail) {
       const [existingEmails] = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [cleanEmail]);
       if (existingEmails.length > 0) {
@@ -172,6 +179,9 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const id = `usr-${Date.now()}`;
+    const requiresOtpActivation = role === 'CUSTOMER_REP';
+    const otp = requiresOtpActivation ? generateOtp() : null;
+    const otpExpiry = requiresOtpActivation ? new Date(Date.now() + 10 * 60 * 1000) : null;
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
@@ -190,8 +200,8 @@ app.post('/api/auth/register', async (req, res) => {
     const permsJson = JSON.stringify(permissions);
 
     await pool.query(
-      'INSERT INTO users (id, username, password_hash, name, role, title, avatar, email, permissions, settings) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, cleanUsername, passwordHash, name.trim(), role, userTitle, avatar, cleanEmail, permsJson, JSON.stringify({})]
+      'INSERT INTO users (id, username, password_hash, name, role, title, avatar, email, permissions, settings, is_active, otp_code, otp_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, cleanUsername, passwordHash, name.trim(), role, userTitle, avatar, cleanEmail, permsJson, JSON.stringify({}), !requiresOtpActivation, otp, otpExpiry]
     );
 
     const sessionUser = {
@@ -206,23 +216,13 @@ app.post('/api/auth/register', async (req, res) => {
       settings: {},
     };
 
-    // Issue JWTs
-    const accessToken = signAccessToken(sessionUser);
-    const refreshToken = signRefreshToken(sessionUser);
-
-    const secureFlag = process.env.NODE_ENV === 'production';
-    res.cookie('access_token', accessToken, { httpOnly: true, secure: secureFlag, sameSite: 'lax', maxAge: 15 * 60 * 1000 });
-    res.cookie('refresh_token', refreshToken, { httpOnly: true, secure: secureFlag, sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000 });
-
     // Audit log for registration
-    await insertAuditLog(pool, sessionUser.id, sessionUser.name, sessionUser.role, 'REGISTER', `User '${sessionUser.username}' registered successfully as '${sessionUser.role}'.`);
+    await insertAuditLog(pool, sessionUser.id, sessionUser.name, sessionUser.role, 'REGISTER', `User '${sessionUser.username}' registered successfully as '${sessionUser.role}' and is awaiting OTP activation.`);
 
     // Send notification emails
-    // Email to the newly registered user (if email provided)
     if (cleanEmail) {
-      await sendRegistrationEmail({ to: cleanEmail, name: sessionUser.name, username: sessionUser.username, role: sessionUser.role, title: sessionUser.title });
+      await sendRegistrationEmail({ to: cleanEmail, name: sessionUser.name, username: sessionUser.username, role: sessionUser.role, title: sessionUser.title, otp });
     }
-    // Email to admin notifying of new admin registration (if role is ADMIN)
     if (sessionUser.role === 'ADMIN') {
       const adminNotify = process.env.ADMIN_NOTIFICATION_EMAIL;
       if (adminNotify) {
@@ -230,10 +230,66 @@ app.post('/api/auth/register', async (req, res) => {
       }
     }
 
-    res.status(201).json(sessionUser);
+    res.status(201).json({
+      success: true,
+      message: 'Account created. Check your email for the 6-digit OTP to activate your account.',
+      requiresOtp: true,
+      user: {
+        id,
+        username: cleanUsername,
+        name: name.trim(),
+        role,
+        title: userTitle,
+        avatar,
+        email: cleanEmail,
+        permissions,
+      }
+    });
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Internal server error during registration' });
+  }
+});
+
+app.post('/api/auth/activate', async (req, res) => {
+  const { username, otp } = req.body;
+
+  if (!username || !otp) {
+    return res.status(400).json({ error: 'Username and OTP are required.' });
+  }
+
+  try {
+    const pool = await getDbPool();
+    const [rows] = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER(?)', [String(username).trim()]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const user = rows[0];
+    if (user.is_active) {
+      return res.status(400).json({ error: 'This account is already active.' });
+    }
+
+    if (!user.otp_code || !user.otp_expires_at) {
+      return res.status(400).json({ error: 'No activation OTP found for this account.' });
+    }
+
+    const expiresAt = new Date(user.otp_expires_at);
+    if (Date.now() > expiresAt.getTime()) {
+      return res.status(400).json({ error: 'Your OTP has expired. Please request a new registration.' });
+    }
+
+    if (String(user.otp_code) !== String(otp).trim()) {
+      return res.status(400).json({ error: 'Invalid OTP. Please check the code sent to your email.' });
+    }
+
+    await pool.query('UPDATE users SET is_active = TRUE, otp_code = NULL, otp_expires_at = NULL WHERE id = ?', [user.id]);
+    await insertAuditLog(pool, user.id, user.name, user.role, 'ACTIVATE_ACCOUNT', `User '${user.username}' activated account using a verified OTP.`);
+
+    res.json({ success: true, message: 'Account activated successfully. You can now sign in with your password.' });
+  } catch (error) {
+    console.error('Activation error:', error);
+    res.status(500).json({ error: 'Internal server error during activation' });
   }
 });
 
@@ -246,13 +302,18 @@ app.post('/api/auth/login', async (req, res) => {
 
   try {
     const pool = await getDbPool();
-    const [rows] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+    const [rows] = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER(?)', [String(username).trim()]);
     
     if (rows.length === 0) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
     
     const user = rows[0];
+    const isCustomerRep = user.role === 'CUSTOMER_REP';
+    if (isCustomerRep && !user.is_active) {
+      return res.status(403).json({ error: 'This account is not active yet. Please activate it using the OTP sent to your email.' });
+    }
+    
     const isMatch = await bcrypt.compare(password, user.password_hash);
     
     if (!isMatch) {
@@ -403,7 +464,7 @@ app.get('/api/users', authMiddleware, requirePermission('MANAGE_USERS'), async (
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     const pool = await getDbPool();
-    const [rows] = await pool.query('SELECT id, username, name, role, title, avatar, email, permissions FROM users ORDER BY id DESC');
+    const [rows] = await pool.query('SELECT id, username, name, role, title, avatar, email, permissions FROM users WHERE is_deleted = FALSE ORDER BY id DESC');
     
     // Parse permissions for each user
     const users = rows.map(user => {
@@ -488,6 +549,39 @@ app.put('/api/users/:id', authMiddleware, requirePermission('MANAGE_USERS'), asy
     await insertAuditLog(pool, req.user.id, req.user.name, req.user.role, 'UPDATE_USER', `User '${updatedUser.username}' (ID: ${id}) updated by '${req.user.name}'. Role set to '${role}'.`);
   } catch (error) {
     console.error('Update user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/users/:id', authMiddleware, requirePermission('MANAGE_USERS'), async (req, res) => {
+  const { id } = req.params;
+
+  if (req.user.id === id) {
+    return res.status(400).json({ error: 'You cannot delete your own account.' });
+  }
+
+  try {
+    const pool = await getDbPool();
+    const [existingUsers] = await pool.query('SELECT id, username, name, role FROM users WHERE id = ? AND is_deleted = FALSE', [id]);
+
+    if (existingUsers.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const userToDelete = existingUsers[0];
+    await pool.query('UPDATE users SET is_deleted = TRUE, deleted_at = NOW() WHERE id = ?', [id]);
+
+    for (const [jti, userId] of refreshStore.entries()) {
+      if (userId === id) {
+        refreshStore.delete(jti);
+      }
+    }
+
+    await insertAuditLog(pool, req.user.id, req.user.name, req.user.role, 'DELETE_USER', `User '${userToDelete.username}' (ID: ${id}) was deactivated by '${req.user.name}'. Historical feedback and actions were preserved.`);
+
+    res.json({ success: true, deletedUser: userToDelete });
+  } catch (error) {
+    console.error('Delete user error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

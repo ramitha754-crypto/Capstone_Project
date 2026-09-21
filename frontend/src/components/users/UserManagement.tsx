@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Search, RefreshCw, Shield, Mail, UserPlus, X } from 'lucide-react';
+import { Users, Search, RefreshCw, Shield, Mail, UserPlus, X, Trash2 } from 'lucide-react';
 
 interface User {
   id: string;
@@ -279,6 +279,31 @@ export const UserManagement: React.FC = () => {
       setAddError(error.message || 'Failed to create user');
     } finally {
       setIsAdding(false);
+    }
+  };
+
+  const deleteUser = async (userId: string, userName: string) => {
+    const confirmed = window.confirm(`Are you sure you want to delete ${userName}? This action cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete user');
+      }
+
+      setUsers((prevUsers) => prevUsers.filter((user) => user.id !== userId));
+    } catch (error: any) {
+      window.alert(error.message || 'Failed to delete user');
     }
   };
 
@@ -725,9 +750,28 @@ export const UserManagement: React.FC = () => {
                       </div>
                     </td>
                     <td style={{ padding: '16px', textAlign: 'right' }}>
-                      <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: '0.75rem' }} onClick={() => openEditModal(user)}>
-                        Edit
-                      </button>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                        <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: '0.75rem' }} onClick={() => openEditModal(user)}>
+                          Edit
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: '0.75rem',
+                            color: '#f87171',
+                            borderColor: 'rgba(248, 113, 113, 0.4)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                          onClick={() => deleteUser(user.id, user.name)}
+                          title={`Delete ${user.name}`}
+                          aria-label={`Delete ${user.name}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

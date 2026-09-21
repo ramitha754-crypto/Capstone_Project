@@ -28,6 +28,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme, onToggleTheme }) =
   // Sign In form state
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [loginOtp, setLoginOtp] = useState('');
+  const [showActivationInput, setShowActivationInput] = useState(false);
 
   // Register form state
   const [regName, setRegName] = useState('');
@@ -93,7 +95,59 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme, onToggleTheme }) =
 
       onLogin(data as UserPersona);
     } catch (err: any) {
+      if (err.message && err.message.includes('activate')) {
+        setShowActivationInput(true);
+      }
       setError(err.message || 'Please check your username and password and try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAccountActivation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+
+    if (!loginUsername.trim() || !loginOtp.trim()) {
+      setError('Username and OTP are required to activate the account.');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/activate', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: loginUsername.trim(),
+          otp: loginOtp.trim(),
+        }),
+      });
+
+      let data: any = {};
+      const responseText = await response.text();
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = {};
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Activation failed.');
+      }
+
+      setShowActivationInput(false);
+      setSuccessMessage(data.message || 'Account activated successfully. You can now sign in.');
+      setLoginOtp('');
+    } catch (err: any) {
+      setError(err.message || 'Activation failed.');
     } finally {
       setIsLoading(false);
     }
@@ -104,8 +158,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme, onToggleTheme }) =
     setError('');
     setSuccessMessage('');
 
-    if (!regName.trim() || !regUsername.trim() || !regPassword) {
-      setError('Please fill in all required fields.');
+    if (!regName.trim() || !regUsername.trim() || !regEmail.trim() || !regPassword) {
+      setError('Please fill in all required fields, including your email address for OTP activation.');
       return;
     }
 
@@ -156,12 +210,13 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme, onToggleTheme }) =
         throw new Error(data.error || 'Registration failed. Please try again.');
       }
 
-      setSuccessMessage('Account registered successfully! Logging you in...');
-      
-      // Seamlessly log the user into the application
-      setTimeout(() => {
-        onLogin(data as UserPersona);
-      }, 500);
+      const registeredUsername = data.user?.username || regUsername.trim();
+      setMode('login');
+      setLoginUsername(registeredUsername);
+      setLoginPassword('');
+      setLoginOtp('');
+      setShowActivationInput(true);
+      setSuccessMessage(data.message || 'Account registered. Enter the 6-digit OTP sent to your email to activate it.');
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please check your information and try again.');
     } finally {
@@ -355,7 +410,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme, onToggleTheme }) =
 
           {/* ── MODE 1: LOGIN FORM ── */}
           {mode === 'login' ? (
-            <form onSubmit={handleLoginSubmit}>
+            <form onSubmit={showActivationInput ? handleAccountActivation : handleLoginSubmit}>
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Username
@@ -371,7 +426,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme, onToggleTheme }) =
                 />
               </div>
 
-              <div style={{ marginBottom: '24px' }}>
+              <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Password
@@ -396,6 +451,27 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme, onToggleTheme }) =
                 />
               </div>
 
+              {showActivationInput && (
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Activation OTP
+                  </label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={loginOtp}
+                    onChange={(e) => setLoginOtp(e.target.value)}
+                    placeholder="Enter 6-digit OTP"
+                    maxLength={6}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                  />
+                  <div style={{ marginTop: '6px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    Use the OTP sent to your email to activate this account.
+                  </div>
+                </div>
+              )}
+
               <button
                 type="submit"
                 className="btn btn-primary"
@@ -404,7 +480,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme, onToggleTheme }) =
               >
                 {isLoading ? 'Authenticating...' : (
                   <>
-                    <span>Sign In</span>
+                    <span>{showActivationInput ? 'Activate & Sign In' : 'Sign In'}</span>
                     <ArrowRight size={16} />
                   </>
                 )}
@@ -485,13 +561,14 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme, onToggleTheme }) =
               {/* Work Email */}
               <div style={{ marginBottom: '14px' }}>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Work Email Address
+                  Work Email Address *
                 </label>
                 <input
                   type="email"
                   className="input"
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
+                  required
                   placeholder="e.g. dchen@acmefinancial.com"
                   autoComplete="email"
                 />

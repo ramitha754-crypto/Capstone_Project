@@ -27,7 +27,7 @@ function configureSendGrid() {
  * @param {string} [options.title] - User's title (e.g. Customer Representative)
  * @returns {Promise<{success: boolean, error?: string, response?: any}>}
  */
-export async function sendRegistrationEmail({ to, name, username, role = 'CUSTOMER_REP', title = 'Customer Representative' }) {
+export async function sendRegistrationEmail({ to, name, username, role = 'CUSTOMER_REP', title = 'Customer Representative', otp }) {
   if (!to) {
     console.warn(`[EmailService] No email address provided for user '${username}'. Email dispatch skipped.`);
     return { success: false, error: 'No recipient email provided' };
@@ -41,7 +41,7 @@ export async function sendRegistrationEmail({ to, name, username, role = 'CUSTOM
   const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'ramiramitha41@gmail.com';
   const loginUrl = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
 
-  const subject = `Welcome to Customer Feedback Encapsulation System, ${name}!`;
+  const subject = `Activate your Customer Feedback account ${otp ? 'with OTP' : ''}`.trim() || `Welcome to Customer Feedback Encapsulation System, ${name}!`;
 
   const html = `
     <!DOCTYPE html>
@@ -112,6 +112,18 @@ export async function sendRegistrationEmail({ to, name, username, role = 'CUSTOM
           color: #38bdf8;
           font-weight: 500;
         }
+        .otp-box {
+          display: inline-block;
+          font-size: 28px;
+          letter-spacing: 0.35rem;
+          background: rgba(59, 130, 246, 0.12);
+          border: 1px solid rgba(96, 165, 250, 0.4);
+          color: #f8fafc;
+          padding: 14px 18px;
+          border-radius: 10px;
+          font-weight: 700;
+          margin: 12px 0 6px;
+        }
         .btn-wrapper {
           text-align: center;
           margin: 32px 0 20px;
@@ -152,14 +164,15 @@ export async function sendRegistrationEmail({ to, name, username, role = 'CUSTOM
             <div class="card-row"><span class="label">Username:</span> <span class="value">${username}</span></div>
             <div class="card-row"><span class="label">Role:</span> <span class="value">${role}</span></div>
             <div class="card-row"><span class="label">Designation:</span> <span class="value">${title}</span></div>
+            ${otp ? `<div class="card-row"><span class="label">OTP:</span> <span class="otp-box">${otp}</span></div>` : ''}
           </div>
 
           <p style="line-height: 1.6; color: #94a3b8; font-size: 14px;">
-            You can now submit customer feedback, track encapsulation pipelines, and monitor feedback processing in real-time.
+            ${otp ? `Use the 6-digit OTP above to activate your account before your first login. After activation, subsequent logins will use only your password.` : 'You can now submit customer feedback, track encapsulation pipelines, and monitor feedback processing in real-time.'}
           </p>
 
           <div class="btn-wrapper">
-            <a href="${loginUrl}" class="btn">Log In to Portal</a>
+            <a href="${loginUrl}" class="btn">Activate &amp; Log In</a>
           </div>
         </div>
         <div class="footer">
@@ -175,7 +188,7 @@ export async function sendRegistrationEmail({ to, name, username, role = 'CUSTOM
     to,
     from: fromEmail,
     subject,
-    text: `Hello ${name},\n\nWelcome to the Customer Feedback Encapsulation System! Your account (${username}) with role ${role} has been registered successfully.\n\nLog in at: ${loginUrl}`,
+    text: `Hello ${name},\n\nWelcome to the Customer Feedback Encapsulation System! Your account (${username}) with role ${role} has been registered successfully.\n\n${otp ? `Your 6-digit activation code is ${otp}. Use it to activate your account before logging in. After activation, future logins use your password only.` : `Log in at: ${loginUrl}`}`,
     html,
   };
 

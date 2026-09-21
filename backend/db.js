@@ -176,11 +176,51 @@ export async function setupDatabase() {
         avatar VARCHAR(50),
         email VARCHAR(100),
         permissions JSON,
-        settings JSON
+        settings JSON,
+        is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+        deleted_at DATETIME NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        otp_code VARCHAR(10) NULL,
+        otp_expires_at DATETIME NULL
       )
     `);
     try {
       await currentPool.query('ALTER TABLE users ADD COLUMN settings JSON');
+    } catch (error) {
+      if (error.code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
+    try {
+      await currentPool.query('ALTER TABLE users ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT FALSE');
+    } catch (error) {
+      if (error.code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
+    try {
+      await currentPool.query('ALTER TABLE users ADD COLUMN deleted_at DATETIME NULL');
+    } catch (error) {
+      if (error.code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
+    try {
+      await currentPool.query('ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE');
+    } catch (error) {
+      if (error.code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
+    try {
+      await currentPool.query('ALTER TABLE users ADD COLUMN otp_code VARCHAR(10) NULL');
+    } catch (error) {
+      if (error.code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
+    try {
+      await currentPool.query('ALTER TABLE users ADD COLUMN otp_expires_at DATETIME NULL');
     } catch (error) {
       if (error.code !== 'ER_DUP_FIELDNAME') {
         throw error;
